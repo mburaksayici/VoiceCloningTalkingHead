@@ -1,0 +1,3 @@
+[submodule "src/models/voice_cloning_models/StyleTTS2"]
+	path = src/models/voice_cloning_models/StyleTTS2/StyleTTS2
+	url = https://github.com/yl4579/StyleTTS2.git
