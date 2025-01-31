@@ -9,6 +9,14 @@ class VoiceCloningInput:
     reference_audio: Union[str, Path]
     prompt: str
 
+@dataclass
+class TalkingHeadInput:
+    """Input data for talking head generation"""
+    reference_image: Union[str, Path]
+    prompt: str
+    reference_audio: Optional[Union[str, Path]] = None
+    generated_video: Optional[Union[str, Path]] = None
+
 
 class BaseVoiceCloning(ABC):
     """Base class for voice cloning models"""
