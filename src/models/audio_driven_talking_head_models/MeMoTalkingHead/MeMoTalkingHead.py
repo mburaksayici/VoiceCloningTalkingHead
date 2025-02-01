@@ -93,7 +93,7 @@ class MeMoTalkingHead(BaseTalkingHead):
         )
         return pipeline.to(device=self.device, dtype=self.weight_dtype)
     
-    def generate_video(self, generated_audio, reference_image ) -> str:
+    def generate_video(self, reference_audio,reference_image, generated_video ) -> str:
         from .memo.memo.utils.audio_utils import (
             extract_audio_emotion_labels, 
             preprocess_audio, 
@@ -120,12 +120,14 @@ class MeMoTalkingHead(BaseTalkingHead):
         )
         
         # Process audio
-        audio_path = generated_audio # or input_data["reference_audio"]
+        audio_path = reference_audio
         audio_path = resample_audio(
             audio_path, 
             str(Path(audio_path).with_suffix('.wav'))
         )
-        
+        cache_dir = "cache/"
+
+        cache_dir = os.path.join(output_dir, "audio_preprocess")
         audio_emb, audio_length = preprocess_audio(
             wav_path=audio_path,
             num_generated_frames_per_clip=num_generated_frames_per_clip,

@@ -5,7 +5,7 @@ from src.pipelines.TalkingHeadVoiceCloningPipeline import TalkingHeadPipeline
 def main():
     # Initialize models
     voice_cloning = StyleTTS2Cloning(device="cpu")
-    talking_head = MeMoTalkingHead(checkpoint_dir="content/memo/checkpoints/", device="cpu")
+    talking_head = MeMoTalkingHead(checkpoint_dir="content/memo/checkpoints/", device="cuda")
 
     # Create pipeline
     pipeline = TalkingHeadPipeline(talking_head, voice_cloning)
