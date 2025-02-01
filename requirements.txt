@@ -1,0 +1,4 @@
+phonemizer
+xformers-0.0.29.post1
+torchaudio
+moviepy==1.0.3

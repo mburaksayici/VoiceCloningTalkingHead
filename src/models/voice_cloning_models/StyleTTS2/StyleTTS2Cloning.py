@@ -12,7 +12,8 @@ import torchaudio
 import librosa
 from nltk.tokenize import word_tokenize
 import phonemizer
-
+import nltk
+nltk.download('punkt_tab')
 
 
 # Add StyleTTS2 to Python path
@@ -78,7 +79,7 @@ class StyleTTS2Cloning(BaseVoiceCloning):
         config_path = self.config_dir / "config.yml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
-        breakpoint()
+
         # Load ASR model
         ASR_config = config.get('ASR_config', False)
         ASR_config = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('ASR_config', False),  ) 
@@ -99,15 +100,18 @@ class StyleTTS2Cloning(BaseVoiceCloning):
         
         # Build main model
         model_params = recursive_munch(config['model_params'])
+        self.model_params = model_params
         self.model = build_model(
             model_params,
             self.text_aligner,
             self.pitch_extractor,
             self.plbert
         )
-        
-        # Load checkpoints
 
+        _ = [self.model[key].eval() for key in self.model]
+        _ = [self.model[key].to(self.device) for key in self.model]
+
+        # Load checkpoints
         params_whole = torch.load(self.checkpoint_path, map_location='cpu')
         params = params_whole['net']
         
@@ -122,7 +126,11 @@ class StyleTTS2Cloning(BaseVoiceCloning):
                     for k, v in state_dict.items():
                         name = k[7:] # remove `module.`
                         new_state_dict[name] = v
-                    self.model[key].load_state_dict(new_state_dict, strict=False)
+                    try:
+                        self.model[key].load_state_dict(new_state_dict, strict=False)
+                    except:
+                        print("hell no check here.")
+                        pass
         
         # Set models to eval mode and move to device
         for key in self.model:

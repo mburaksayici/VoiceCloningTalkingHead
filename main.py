@@ -12,7 +12,7 @@ def main():
     
     # Generate video
     output = pipeline.generate(
-        image_path="image.jpg",
+        reference_image="image.jpg",
         reference_audio="reference.wav",
         prompt="Hello, this is a test"
     )
