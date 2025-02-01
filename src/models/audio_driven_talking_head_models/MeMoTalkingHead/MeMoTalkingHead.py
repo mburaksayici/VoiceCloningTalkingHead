@@ -41,13 +41,35 @@ if str(MEMO_PATH) not in sys.path:
 
 
 
+def get_random_device():
+    # Check if there are at least two CUDA devices available
+    if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        print("MULTIPLE GPUS, YEEEEY")
+        return torch.device(f"cuda:{random.choice([0, 1])}")
+    elif torch.cuda.is_available() and torch.cuda.device_count() == 1:
+        return torch.device("cuda:0")
+    else:
+        return torch.device("cpu")  # Default to CPU if no CUDA device is available
+
+
 
 
 class MeMoTalkingHead(BaseTalkingHead):
     """Implementation of MeMo talking head model"""
     
     def __init__(self, checkpoint_dir: str, device: str = "cuda"):
-        self.device = torch.device(device)
+
+        if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+            print("MULTIPLE GPUS, YEEEEY"*100)
+            device_0="cuda:0"
+            device_1="cuda:1"
+
+        else:
+            device_0="cuda:0"
+            device_1="cuda:0"
+
+        self.device_0 = torch.device(device_0)
+        self.device_1 = torch.device(device_1)
         self.weight_dtype = torch.bfloat16
         self.checkpoint_dir = Path(checkpoint_dir)
         
@@ -75,35 +97,35 @@ class MeMoTalkingHead(BaseTalkingHead):
         from diffusers import AutoencoderKL
         return AutoencoderKL.from_pretrained(
             self.checkpoint_dir / "vae"
-        ).to(device=self.device, dtype=self.weight_dtype)
+        ).to(device=self.device_0, dtype=self.weight_dtype)
     
     def _load_reference_net(self):
         from .memo.memo.models.unet_2d_condition import UNet2DConditionModel
         return UNet2DConditionModel.from_pretrained(
             self.checkpoint_dir, subfolder="reference_net", 
             use_safetensors=True
-        ).to(device=self.device, dtype=self.weight_dtype)
+        ).to(device=self.device_1, dtype=self.weight_dtype)
     
     def _load_diffusion_net(self):
         from .memo.memo.models.unet_3d import UNet3DConditionModel
         return UNet3DConditionModel.from_pretrained(
             self.checkpoint_dir, subfolder="diffusion_net", 
             use_safetensors=True
-        ).to(device=self.device, dtype=self.weight_dtype)
+        ).to(device=self.device_0, dtype=self.weight_dtype)
     
     def _load_image_proj(self):
         from .memo.memo.models.image_proj import ImageProjModel
         return ImageProjModel.from_pretrained(
             self.checkpoint_dir, subfolder="image_proj", 
             use_safetensors=True
-        ).to(device=self.device, dtype=self.weight_dtype)
+        ).to(device=self.device_1, dtype=self.weight_dtype)
     
     def _load_audio_proj(self):
         from .memo.memo.models.audio_proj import AudioProjModel
         return AudioProjModel.from_pretrained(
             self.checkpoint_dir, subfolder="audio_proj", 
             use_safetensors=True
-        ).to(device=self.device, dtype=self.weight_dtype)
+        ).to(device=self.device_0, dtype=self.weight_dtype)
     
     def _setup_pipeline(self):
         from diffusers import FlowMatchEulerDiscreteScheduler
@@ -117,7 +139,7 @@ class MeMoTalkingHead(BaseTalkingHead):
             scheduler=scheduler,
             image_proj=self.image_proj
         )
-        return pipeline.to(device=self.device, dtype=self.weight_dtype)
+        return pipeline.to(device=self.device_1, dtype=self.weight_dtype)
     
     def generate_video(self, reference_audio,reference_image, generated_video ) -> str:
         from .memo.memo.utils.audio_utils import (
@@ -132,7 +154,7 @@ class MeMoTalkingHead(BaseTalkingHead):
         num_generated_frames_per_clip = 16
         fps = 30
         num_init_past_frames = 2
-        num_past_frames = 16
+        num_past_frames = 5
         inference_steps = 20
         cfg_scale = 3.5
         seed = 42
@@ -167,7 +189,7 @@ class MeMoTalkingHead(BaseTalkingHead):
             fps=fps,
             wav2vec_model=str(self.checkpoint_dir / "wav2vec2"),
             vocal_separator_model=str(self.checkpoint_dir / "misc/vocal_separator/Kim_Vocal_2.onnx"),
-            device=self.device,
+            device=self.device_0,
             cache_dir = cache_dir
         )
         
@@ -176,7 +198,7 @@ class MeMoTalkingHead(BaseTalkingHead):
             wav_path=audio_path,
             emotion2vec_model=str(self.checkpoint_dir / "emotion2vec_plus_large"),
             audio_length=audio_length,
-            device=self.device
+            device=self.device_1
         )
         
         # Generate video frames
@@ -273,7 +295,6 @@ class MeMoTalkingHead(BaseTalkingHead):
                     (t + 1) * num_generated_frames_per_clip, audio_emb.shape[0]
                 )
             ]
-
             pipeline_output = self.pipeline(
                 ref_image=pixel_values_ref_img,
                 audio_tensor=audio_tensor,
@@ -290,6 +311,8 @@ class MeMoTalkingHead(BaseTalkingHead):
             )
 
             video_frames.append(pipeline_output.videos)
+
+            torch.cuda.empty_cache()
 
         video_frames = torch.cat(video_frames, dim=2)
         video_frames = video_frames.squeeze(0)
