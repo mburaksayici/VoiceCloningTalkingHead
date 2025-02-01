@@ -1,11 +1,37 @@
 
 from pathlib import Path
 import sys
+import os 
+import random 
+import string 
 
 from src.base.AudioDrivenTalkingHead import BaseTalkingHead, TalkingHeadInput
 
 import torch
 import numpy as np
+
+import argparse
+import logging
+import os
+
+import torch
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler
+from diffusers.utils.import_utils import is_xformers_available
+from omegaconf import OmegaConf
+from packaging import version
+from tqdm import tqdm
+
+sys.path.append(os.path.abspath('src/models/audio_driven_talking_head_models/MeMoTalkingHead/memo/'))
+
+from memo.models.audio_proj import AudioProjModel
+from memo.models.image_proj import ImageProjModel
+from memo.models.unet_2d_condition import UNet2DConditionModel
+from memo.models.unet_3d import UNet3DConditionModel
+from memo.pipelines.video_pipeline import VideoPipeline
+from memo.utils.audio_utils import extract_audio_emotion_labels, preprocess_audio, resample_audio
+from memo.utils.vision_utils import preprocess_image, tensor_to_video
+
+
 
 
 # Add StyleTTS2 to Python path
@@ -39,8 +65,8 @@ class MeMoTalkingHead(BaseTalkingHead):
             model.eval()
         
         # Enable memory efficient attention
-        # self.reference_net.enable_xformers_memory_efficient_attention()
-        # self.diffusion_net.enable_xformers_memory_efficient_attention()
+        self.reference_net.enable_xformers_memory_efficient_attention()
+        self.diffusion_net.enable_xformers_memory_efficient_attention()
         
         # Initialize pipeline
         self.pipeline = self._setup_pipeline()
@@ -123,18 +149,26 @@ class MeMoTalkingHead(BaseTalkingHead):
         audio_path = reference_audio
         audio_path = resample_audio(
             audio_path, 
-            str(Path(audio_path).with_suffix('.wav'))
-        )
-        cache_dir = "cache/"
+            str(Path(audio_path).with_suffix('.wav')))
 
-        cache_dir = os.path.join(output_dir, "audio_preprocess")
+        # Generate a random directory name with 10 characters
+        random_dir_name = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+
+        # Create the directory
+        os.makedirs(random_dir_name, exist_ok=True)
+        
+
+
+        cache_dir = os.path.join(random_dir_name, "audio_preprocess")
+
         audio_emb, audio_length = preprocess_audio(
             wav_path=audio_path,
             num_generated_frames_per_clip=num_generated_frames_per_clip,
             fps=fps,
             wav2vec_model=str(self.checkpoint_dir / "wav2vec2"),
             vocal_separator_model=str(self.checkpoint_dir / "misc/vocal_separator/Kim_Vocal_2.onnx"),
-            device=self.device
+            device=self.device,
+            cache_dir = cache_dir
         )
         
         audio_emotion, num_emotion_classes = extract_audio_emotion_labels(
@@ -171,3 +205,94 @@ class MeMoTalkingHead(BaseTalkingHead):
         )
         
         return output_path
+
+
+    def _generate_video_frames(self,pixel_values, face_emb, audio_emb, audio_emotion, num_emotion_classes,
+                resolution, num_generated_frames_per_clip, num_init_past_frames, 
+                num_past_frames, inference_steps, cfg_scale, generator):
+
+
+        print("Loading models")
+
+        self.vae.requires_grad_(False).eval()
+        self.reference_net.requires_grad_(False).eval()
+        self.diffusion_net.requires_grad_(False).eval()
+        self.image_proj.requires_grad_(False).eval()
+        self.audio_proj.requires_grad_(False).eval()
+
+        # Enable memory-efficient attention for xFormers
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                print(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
+            #reference_net.enable_xformers_memory_efficient_attention()
+            #diffusion_net.enable_xformers_memory_efficient_attention()
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+        # Create inference pipeline
+       
+
+        video_frames = []
+        num_clips = audio_emb.shape[0] // num_generated_frames_per_clip
+        for t in tqdm(range(num_clips), desc="Generating video clips"):
+            if len(video_frames) == 0:
+                # Initialize the first past frames with reference image
+                past_frames = pixel_values.repeat(num_init_past_frames, 1, 1, 1)
+                past_frames = past_frames.to(dtype=pixel_values.dtype, device=pixel_values.device)
+                pixel_values_ref_img = torch.cat([pixel_values, past_frames], dim=0)
+            else:
+                past_frames = video_frames[-1][0]
+                past_frames = past_frames.permute(1, 0, 2, 3)
+                past_frames = past_frames[0 - num_past_frames :]
+                past_frames = past_frames * 2.0 - 1.0
+                past_frames = past_frames.to(dtype=pixel_values.dtype, device=pixel_values.device)
+                pixel_values_ref_img = torch.cat([pixel_values, past_frames], dim=0)
+
+            pixel_values_ref_img = pixel_values_ref_img.unsqueeze(0)
+
+            audio_tensor = (
+                audio_emb[
+                    t
+                    * num_generated_frames_per_clip : min(
+                        (t + 1) * num_generated_frames_per_clip, audio_emb.shape[0]
+                    )
+                ]
+                .unsqueeze(0)
+                .to(device=self.audio_proj.device, dtype=self.audio_proj.dtype)
+            )
+            audio_tensor = self.audio_proj(audio_tensor)
+
+            audio_emotion_tensor = audio_emotion[
+                t
+                * num_generated_frames_per_clip : min(
+                    (t + 1) * num_generated_frames_per_clip, audio_emb.shape[0]
+                )
+            ]
+
+            pipeline_output = self.pipeline(
+                ref_image=pixel_values_ref_img,
+                audio_tensor=audio_tensor,
+                audio_emotion=audio_emotion_tensor,
+                emotion_class_num=num_emotion_classes,
+                face_emb=face_emb,
+                width=pixel_values.shape[2],
+                height=pixel_values.shape[3],
+                video_length=num_generated_frames_per_clip,
+                num_inference_steps=inference_steps,
+                guidance_scale=cfg_scale,
+                generator=generator,
+                is_new_audio=t == 0,
+            )
+
+            video_frames.append(pipeline_output.videos)
+
+        video_frames = torch.cat(video_frames, dim=2)
+        video_frames = video_frames.squeeze(0)
+        video_frames = video_frames[:, :audio_length]
+
+        return video_frames

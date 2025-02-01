@@ -24,7 +24,7 @@ class TalkingHeadPipeline:
             str: Path to generated video file
         """
         # First clone the voice if reference audio is provided
-        breakpoint()
+
         if reference_audio:
             """voice_input = VoiceCloningInput(
                 reference_audio=reference_audio,
