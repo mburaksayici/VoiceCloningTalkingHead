@@ -21,7 +21,8 @@ from omegaconf import OmegaConf
 from packaging import version
 from tqdm import tqdm
 
-sys.path.append(os.path.abspath('src/models/audio_driven_talking_head_models/MeMoTalkingHead/memo/'))
+import sys, os
+sys.path.insert(0, os.path.abspath("src/models/audio_driven_talking_head_models/MeMoTalkingHead/memotalkinghead_submodule"))
 
 from memo.models.audio_proj import AudioProjModel
 from memo.models.image_proj import ImageProjModel
