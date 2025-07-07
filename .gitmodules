@@ -4,3 +4,6 @@
 [submodule "src/models/audio_driven_talking_head_models/MeMoTalkingHead/memo"]
 	path = src/models/audio_driven_talking_head_models/MeMoTalkingHead/memo
 	url = https://github.com/memoavatar/memo.git
+[submodule "src/models/audio_driven_talking_head_models/MeMoTalkingHead/memotalkinghead_submodule"]
+	path = src/models/audio_driven_talking_head_models/MeMoTalkingHead/memotalkinghead_submodule
+	url = https://github.com/memoavatar/memo.git
