@@ -13,8 +13,8 @@ def main():
     # Generate video
     output = pipeline.generate(
         reference_image="image.jpg",
-        reference_audio="reference.wav",
-        prompt="Hello, this is a test"
+        reference_audio="audio.mp3",
+        prompt="Hi. How are you? Is everything alright?"
     )
 
     print(f"Generated video saved to: {output}")

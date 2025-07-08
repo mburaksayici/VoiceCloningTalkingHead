@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Union, Optional
 import yaml
+import traceback 
 
 import torch
 import numpy as np
@@ -81,20 +82,20 @@ class StyleTTS2Cloning(BaseVoiceCloning):
             config = yaml.safe_load(f)
 
         # Load ASR model
-        ASR_config = config.get('ASR_config', False)
-        ASR_config = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('ASR_config', False),  ) 
+        ASR_config = config.get('ASR_config')
+        ASR_config = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('ASR_config'),  ) 
 
-        ASR_path = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('ASR_path', False),  ) 
+        ASR_path = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('ASR_path'),  ) 
         self.text_aligner = load_ASR_models(ASR_path, ASR_config)
         
         # Load F0 model
         F0_path = config.get('F0_path', False)
-        F0_path = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('F0_path', False),  ) 
+        F0_path = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('F0_path'),  ) 
         self.pitch_extractor = load_F0_models(F0_path)
         
         # Load BERT model
         BERT_path = config.get('PLBERT_dir', False)
-        BERT_path = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('PLBERT_dir', False),  ) 
+        BERT_path = os.path.join ( "src/models/voice_cloning_models/StyleTTS2/StyleTTS2" , config.get('PLBERT_dir'),  ) 
 
         self.plbert = load_plbert(BERT_path)
         
@@ -112,24 +113,36 @@ class StyleTTS2Cloning(BaseVoiceCloning):
         _ = [self.model[key].to(self.device) for key in self.model]
 
         # Load checkpoints
+
         params_whole = torch.load(self.checkpoint_path, map_location='cpu')
         params = params_whole['net']
-        
+
         for key in self.model:
             if key in params:
                 try:
                     self.model[key].load_state_dict(params[key])
-                except:
+                except Exception as exc:
+                    exception_string = traceback.format_exc()
+
                     from collections import OrderedDict
                     state_dict = params[key]
                     new_state_dict = OrderedDict()
+
                     for k, v in state_dict.items():
-                        name = k[7:] # remove `module.`
+                        # Remove prefix if present
+                        if k.startswith("module.generator."):
+                            name = k[len("module.generator."):]
+                        elif k.startswith("module."):
+                            name = k[7:]
+                        else:
+                            name = k
                         new_state_dict[name] = v
+
                     try:
                         self.model[key].load_state_dict(new_state_dict, strict=False)
-                    except:
-                        print("hell no check here.")
+                    except Exception as exc2:
+                        print(f"hell no check here. key : {key}  original exception : {exception_string}")
+                        print(f"second exception: {traceback.format_exc()}")
                         pass
         
         # Set models to eval mode and move to device
@@ -154,6 +167,8 @@ class StyleTTS2Cloning(BaseVoiceCloning):
         wave_tensor = torch.from_numpy(wave).float()
         mel_tensor = self.to_mel(wave_tensor)
         mel_tensor = (torch.log(1e-5 + mel_tensor.unsqueeze(0)) - self.mean) / self.std
+        print("Mel shape:", mel_tensor.shape, "Mean:", mel_tensor.mean().item(), "Std:", mel_tensor.std().item())
+
         return mel_tensor
 
     def _compute_style(self, audio_path: Union[str, Path]) -> torch.Tensor:
@@ -212,6 +227,9 @@ class StyleTTS2Cloning(BaseVoiceCloning):
         ps = self.phonemizer.phonemize([text])
         ps = word_tokenize(ps[0])
         ps = ' '.join(ps)
+        print("Phonemes:", ps)
+
+
         tokens = self.text_cleaner(ps)
         tokens.insert(0, 0)
         tokens = torch.LongTensor(tokens).to(self.device).unsqueeze(0)

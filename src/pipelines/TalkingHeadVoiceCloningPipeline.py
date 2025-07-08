@@ -26,13 +26,13 @@ class TalkingHeadPipeline:
         # First clone the voice if reference audio is provided
 
         if reference_audio:
-            """voice_input = VoiceCloningInput(
+            voice_input = VoiceCloningInput(
                 reference_audio=reference_audio,
                 prompt=prompt
             )
-            """
-        #    generated_audio = self.voice_cloning.clone_voice(reference_audio=reference_audio,prompt=prompt)
-        reference_audio = "reference.mp3" # always test with mp3. no wav for now.
+            
+            generated_audio = self.voice_cloning.clone_voice(reference_audio=reference_audio,prompt=prompt)
+        # reference_audio = "reference.mp3" # always test with mp3. no wav for now.
         # Then generate the video
         generated_video = "video.mp4"
-        return self.talking_head.generate_video(reference_audio,reference_image, generated_video)
+        return self.talking_head.generate_video(generated_audio,reference_image, generated_video)

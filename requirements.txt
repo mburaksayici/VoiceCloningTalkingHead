@@ -2,7 +2,6 @@ phonemizer
 torchaudio
 moviepy==1.0.3
 nltk
-einops
 numpy==1.24.4
 scipy==1.14
 accelerate==1.1.1

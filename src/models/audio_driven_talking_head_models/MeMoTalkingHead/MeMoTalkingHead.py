@@ -101,28 +101,28 @@ class MeMoTalkingHead(BaseTalkingHead):
         ).to(device=self.device_0, dtype=self.weight_dtype)
     
     def _load_reference_net(self):
-        from .memo.memo.models.unet_2d_condition import UNet2DConditionModel
+        from memo.models.unet_2d_condition import UNet2DConditionModel
         return UNet2DConditionModel.from_pretrained(
             self.checkpoint_dir, subfolder="reference_net", 
             use_safetensors=True
         ).to(device=self.device_1, dtype=self.weight_dtype)
     
     def _load_diffusion_net(self):
-        from .memo.memo.models.unet_3d import UNet3DConditionModel
+        from memo.models.unet_3d import UNet3DConditionModel
         return UNet3DConditionModel.from_pretrained(
             self.checkpoint_dir, subfolder="diffusion_net", 
             use_safetensors=True
         ).to(device=self.device_0, dtype=self.weight_dtype)
     
     def _load_image_proj(self):
-        from .memo.memo.models.image_proj import ImageProjModel
+        from memo.models.image_proj import ImageProjModel
         return ImageProjModel.from_pretrained(
             self.checkpoint_dir, subfolder="image_proj", 
             use_safetensors=True
         ).to(device=self.device_1, dtype=self.weight_dtype)
     
     def _load_audio_proj(self):
-        from .memo.memo.models.audio_proj import AudioProjModel
+        from memo.models.audio_proj import AudioProjModel
         return AudioProjModel.from_pretrained(
             self.checkpoint_dir, subfolder="audio_proj", 
             use_safetensors=True
@@ -130,7 +130,7 @@ class MeMoTalkingHead(BaseTalkingHead):
     
     def _setup_pipeline(self):
         from diffusers import FlowMatchEulerDiscreteScheduler
-        from .memo.memo.pipelines.video_pipeline import VideoPipeline
+        from memo.pipelines.video_pipeline import VideoPipeline
         
         scheduler = FlowMatchEulerDiscreteScheduler()
         pipeline = VideoPipeline(
@@ -143,12 +143,12 @@ class MeMoTalkingHead(BaseTalkingHead):
         return pipeline.to(device=self.device_1, dtype=self.weight_dtype)
     
     def generate_video(self, reference_audio,reference_image, generated_video ) -> str:
-        from .memo.memo.utils.audio_utils import (
+        from memo.utils.audio_utils import (
             extract_audio_emotion_labels, 
             preprocess_audio, 
             resample_audio
         )
-        from .memo.memo.utils.vision_utils import preprocess_image, tensor_to_video
+        from memo.utils.vision_utils import preprocess_image, tensor_to_video
         
         # Configuration
         resolution = 512
@@ -317,6 +317,5 @@ class MeMoTalkingHead(BaseTalkingHead):
 
         video_frames = torch.cat(video_frames, dim=2)
         video_frames = video_frames.squeeze(0)
-        video_frames = video_frames[:, :audio_length]
 
         return video_frames
